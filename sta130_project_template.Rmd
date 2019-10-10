@@ -1,0 +1,248 @@
+---
+title: "Final Project"
+author: "Group members: Allison Li, Youngjun Cho, and Nina Mo, Tutorial section:203, and Group number: 04"
+subtitle: Analysis of Global Internet Usage
+output:
+  ioslides_presentation: default
+  beamer_presentation: default
+  slidy_presentation: default
+  widescreen: yes
+---
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# echo=FALSE will stop the code chunk from appearing in the knit document
+# warning=FALSE and message=FALSE will stop R messages from appearing in the knit document
+library(tidyverse)
+```
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+library(tidyverse)
+path <- "https://raw.githubusercontent.com/ntaback/UofT_STA130/master/Fall2018/Finalproject/"
+
+democracyindex2017 <- read_csv(paste0(path,"democracyindex2017.csv"))
+education_cia2017 <- read_csv(paste0(path,"education_cia2017.csv"))
+gdpppp_cia2017 <- read_csv(paste0(path,"gdpppp_cia2017.csv"))
+lifeexpect_cia2017 <- read_csv(paste0(path,"lifeexpect_cia2017.csv"))
+healthexpend_cia2017 <- read_csv(paste0(path,"healthexpend_cia2017.csv"))
+internetusers_cia2017 <- read_csv(paste0(path,"internetusers_cia2017.csv"))
+telephonelines_cia2017 <- read_csv(paste0(path,"telephonelines_cia2017.csv"))
+population_cia2017 <- read_csv(paste0(path,"population_cia2017.csv"))
+world_regions <- read_csv(paste0(path,"world_regions.csv"))
+
+internet_usage <- inner_join(x= internetusers_cia2017, y = population_cia2017, by = "Country")%>%
+  mutate(percentage_of_users = `INTERNET USERS`/POPULATION)%>%
+  arrange(desc(percentage_of_users))%>%
+  select(Country, `INTERNET USERS`, POPULATION, percentage_of_users)%>%
+  filter(percentage_of_users <= 1)
+
+library(tidyverse)
+library(maps)
+world <- map_data("world") 
+#internetusers_cia2017 <- read_csv("internetusers_cia2017.csv")
+
+iu <- internet_usage %>% rename(region = Country) 
+
+iu$region[4] <- "USA" # to match world map data
+
+iu <- semi_join(iu, world, by = "region")
+
+map_internet <- ggplot()
+
+map_internet <- map_internet + geom_map(
+  data = world,
+  map = world,
+  aes(x = long, y = lat, map_id = region),
+  fill = "#ffffff",
+  color = "#ffffff",
+  size = 0.20
+  )
+  
+  map_internet <- map_internet + geom_map(
+  data = iu,
+  map = world,
+  aes(fill = percentage_of_users, map_id = region),
+  color = "#ffffff",
+  size = 0.15
+  )
+  
+  map_internet <- map_internet + scale_fill_continuous(low = 'thistle2', high = 'darkblue',
+  guide = 'colorbar')
+  
+regions_internet_usage <- inner_join(x= internet_usage, y= world_regions, by= "Country")%>%
+filter(Region != "Asic & Pacific")%>%
+ggplot(aes(x= Region, y = percentage_of_users))+
+geom_boxplot() + ggtitle("Internet Usage by Region") +
+xlab("Region") + ylab("Internet Usage Rate")
+
+gdp <- gdpppp_cia2017 %>% select(Country, 'GDP - PER CAPITA (PPP)')
+gdp_internet <- inner_join(x = internet_usage, y = gdp , by = "Country")%>%
+  mutate(GDP_PER_CAPITA = as.numeric(gsub('[$, ]','',`GDP - PER CAPITA (PPP)`)))
+gdp_internet <- within(gdp_internet, rm(`GDP - PER CAPITA (PPP)`))
+
+econ_graph <- ggplot(data=gdp_internet, aes(x= GDP_PER_CAPITA, y=percentage_of_users))+
+  geom_point() + geom_smooth(method='lm') + ggtitle("The effect of Economy on Internet Usage") +
+  xlab("GDP per Capita") + ylab("Internet Usage Rate")
+
+life <- lifeexpect_cia2017 %>%
+  select(Country, '(YEARS)')
+life_internet <- inner_join(x= internet_usage, y= life, by = "Country")%>%
+  mutate(years_group = rep(NA, 215))
+
+life_internet$years_group[life_internet$'(YEARS)' <= 60] <- '< 60'
+life_internet$years_group[life_internet$'(YEARS)' > 60 & life_internet$'(YEARS)' < 70] <- '60-70'
+life_internet$years_group[life_internet$'(YEARS)' >= 70] <- '>70'
+
+health_bp <- life_internet%>%ggplot(aes(x= years_group, y= percentage_of_users))+
+  geom_boxplot() + ggtitle("The effect of Life Expectancy on Internet Usage") +
+  xlab("Life Expectancy") + ylab("Internet Usage Rate")
+
+health_sp <- ggplot(data = life_internet, aes(x = `(YEARS)` , y = percentage_of_users))+
+  geom_point() + geom_smooth(method = 'lm') + ggtitle("The effect of Life Expectancy on Internet Usage") +
+  xlab("Life Expectancy") + ylab("Internet Usage Rate")
+
+dem <- democracyindex2017 %>%
+  select(Country, Score, Category)
+democracy <- inner_join(x = internet_usage, y = dem, by = "Country")%>%
+  mutate(Score = as.numeric(Score))
+
+# summary(lm(percentage_of_users ~ Category, data=democracy))$coefficients
+dem_graph <- ggplot(data = democracy, aes(x = Score, y = percentage_of_users, colour = Category)) +
+   geom_point(alpha=0.5) + geom_smooth(method = 'lm') + ggtitle("The effect of Democracy on Internet Usage") +
+  xlab("Democracy Score") + ylab("Internet Userage")
+
+education_internet <- inner_join(x = internet_usage, y = education_cia2017, by = 'Country')%>%
+  select(Country, percentage_of_users, `(% OF GDP)`)
+
+education_gdp <- inner_join(x = education_internet, y = gdpppp_cia2017, by = 'Country')%>%
+  mutate(GDP_PER_CAPITA = as.numeric(gsub('[$, ]','',`GDP - PER CAPITA (PPP)`)))%>%
+  mutate(edu_gdp = (`(% OF GDP)` * GDP_PER_CAPITA))
+education_gdp <- within(education_gdp, rm(Rank, `Date of Information`, `GDP - PER CAPITA (PPP)`))
+
+edu_graph <- ggplot(data = education_gdp, aes(x = edu_gdp, y = percentage_of_users))+
+         geom_point() + geom_smooth(method='lm') + ggtitle("The effect of Education on Internet Usage") +
+  xlab("Education Budget") + ylab("Internet Userage")
+```
+
+## Introduction - What is the internet
+- The internet is a system of global networks that transmits data and connect devices globally
+  - It is a network of networks
+  
+  - Invented in the 1960s, this technological phenomennon quickly rose to popularity and now dominates     households, schools, and workplaces. 
+  
+  - Its prevalence in our everyday life and our reliance on it prompts us to question what affects our     society's usage of internet. 
+
+## Introduction - Cont.
+For our purposes, we will be using the data sets from the CIA world fact book to compare each country
+
+  - Internet user: "compares the number of users within a country that access the Internet"
+  
+  - Population: "compares estimates from the US Bureau of the Census based on statistics from
+    population censuses, vital statistics registration systems, or sample surveys pertaining to the       recent past and on assumptions about future trends"
+
+## Objectives
+In this presentation we will:
+
+- Q1: Define how we measure internet usage in a country
+
+- Q2: Compare internet usage within regions 
+
+- Q3: Define concepts such as democracy, education, economy, and health in order to assess their impact on internet usage
+
+## Q1 - How do we define internet usage in a country?
+  - Each country has a different population. Thus, to ensure that our comparisons are not affected by population, we defined internet usage rate as: 
+  
+    - number of internet users / population
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+glimpse(internet_usage)
+```
+
+## Q2 - Internet usage by regions of the world: World Map
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+map_internet
+```
+
+
+
+## Q2 - Internet use by regions of the world: Boxplot 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+regions_internet_usage 
+```
+
+## Q3 - How we defined Economy:
+  - Defined the economy of a country through their GDP per Capita
+  - What is GDP per Capita?
+```{r}
+glimpse(gdp_internet)
+```
+  
+
+## Q3 - Impact of Economy on Internet Use:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+econ_graph
+```
+
+## Q3 - How we defined Health:
+  - Defined the health of a country through the life expectancy of their citizens
+
+```{r}
+glimpse(life_internet)
+```
+
+## Q3 - Impact of Health on Internet Use:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+health_sp
+```
+
+## Q3 - How we defined Democracy:
+  - We defined the democracy of a country based on the score that they received
+  - What does the score represent?
+```{r}
+glimpse(democracy)
+```
+
+
+## Q3 - Impact of Democracy on Internet Usage:
+  - Coloured based on type of government
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+dem_graph
+```
+
+
+
+## Q3 - How we defined Education
+
+  - We defined the education based on how much money the governent spent on education
+  
+  - To adjust for how countries have different sizes of GDP:
+  
+    - We multiplied the % of GDP spent on education with the country's GDP
+
+```{r}
+glimpse(education_gdp)
+```
+
+## Q3 - Impact of Education on Internet Usage:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+edu_graph
+```
+
+## Q3 - Conclusion
+
+     - Summary
+  There is a positive correlation between the percentage of internet users and country's democracy score, education budget, life expectancy, and GDP. 
+  
+  Regions with the relatively higher median percentage of internet users include more countries with higher GDP and other three factors 
+      
+      - Concern
+  Date of information is different in different data
+  
+  Is GDP a confounding variable?
+  
+  
